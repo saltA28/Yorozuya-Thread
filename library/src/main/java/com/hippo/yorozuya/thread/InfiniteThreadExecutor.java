@@ -22,20 +22,17 @@ import java.util.Queue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class InfiniteThreadExecutor implements Executor {
 
-    private long mKeepAliveMillis;
-    private Queue<Runnable> mWorkQueue;
-    private ThreadFactory mThreadFactory;
+    private final long mKeepAliveMillis;
+    private final Queue<Runnable> mWorkQueue;
+    private final ThreadFactory mThreadFactory;
 
     private final AtomicInteger mThreadCount = new AtomicInteger();
-    private final AtomicInteger mEmptyThreadCount = new AtomicInteger();
+    private int mEmptyThreadCount;
 
-    private final Lock mThreadLock = new ReentrantLock();
-    private final Object mWaitLock = new Object();
+    private final Object mLock = new Object();
 
     public InfiniteThreadExecutor(long keepAliveMillis, Queue<Runnable> workQueue, ThreadFactory threadFactory) {
         mKeepAliveMillis = keepAliveMillis;
@@ -45,46 +42,39 @@ public class InfiniteThreadExecutor implements Executor {
 
     @Override
     public void execute(@NonNull Runnable command) {
-        mThreadLock.lock();
-
-        mWorkQueue.add(command);
-
-        // Ensure thread
-        if (mEmptyThreadCount.get() > 0) {
-            mThreadCount.decrementAndGet();
-            synchronized (mWaitLock) {
-                mWaitLock.notify();
+        synchronized (mLock) {
+            mWorkQueue.add(command);
+            if (mEmptyThreadCount > 0) {
+                --mEmptyThreadCount;
+                mLock.notify();
+                return;
             }
-        } else {
-            mThreadFactory.newThread(new Task()).start();
         }
 
-        mThreadLock.unlock();
+        mThreadFactory.newThread(new Task()).start();
     }
 
     public int getThreadCount() {
         return mThreadCount.get();
     }
 
-    public class Task implements Runnable {
+    private class Task implements Runnable {
 
         @Override
         public void run() {
             mThreadCount.incrementAndGet();
 
-            boolean end = false;
-            mThreadLock.lock();
+            boolean hasWait = false;
             for (;;) {
-                Runnable command = mWorkQueue.poll();
-                if (command == null) {
-                    mEmptyThreadCount.decrementAndGet();
-                    end = true;
-                }
-
-                mThreadLock.unlock();
-
-                if (end) {
-                    break;
+                Runnable command;
+                synchronized (mLock) {
+                    command = mWorkQueue.poll();
+                    if (command == null) {
+                        if (hasWait) {
+                            --mEmptyThreadCount;
+                        }
+                        break;
+                    }
                 }
 
                 try {
@@ -93,15 +83,16 @@ public class InfiniteThreadExecutor implements Executor {
                     e.printStackTrace();
                 }
 
-                mEmptyThreadCount.incrementAndGet();
-                synchronized (mWaitLock) {
+                synchronized (mLock) {
+                    ++mEmptyThreadCount;
                     try {
-                        mWaitLock.wait(mKeepAliveMillis);
+                        mLock.wait(mKeepAliveMillis);
                     } catch (InterruptedException e) {
                         // Ignore
                     }
                 }
-                mThreadLock.lock();
+
+                hasWait = true;
             }
 
             mThreadCount.decrementAndGet();
