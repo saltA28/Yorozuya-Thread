@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class InfiniteThreadExecutor implements Executor {
 
+    private final int mCoreSize;
     private final long mKeepAliveMillis;
     private final Queue<Runnable> mWorkQueue;
     private final ThreadFactory mThreadFactory;
@@ -34,7 +35,9 @@ public class InfiniteThreadExecutor implements Executor {
 
     private final Object mLock = new Object();
 
-    public InfiniteThreadExecutor(long keepAliveMillis, Queue<Runnable> workQueue, ThreadFactory threadFactory) {
+    public InfiniteThreadExecutor(int coreSize, long keepAliveMillis,
+            Queue<Runnable> workQueue, ThreadFactory threadFactory) {
+        mCoreSize = coreSize;
         mKeepAliveMillis = keepAliveMillis;
         mWorkQueue = workQueue;
         mThreadFactory = threadFactory;
@@ -66,7 +69,7 @@ public class InfiniteThreadExecutor implements Executor {
 
             boolean hasWait = false;
             for (;;) {
-                Runnable command;
+                final Runnable command;
                 synchronized (mLock) {
                     command = mWorkQueue.poll();
                     if (command == null) {
@@ -86,7 +89,11 @@ public class InfiniteThreadExecutor implements Executor {
                 synchronized (mLock) {
                     ++mEmptyThreadCount;
                     try {
-                        mLock.wait(mKeepAliveMillis);
+                        if (mEmptyThreadCount <= mCoreSize) {
+                            mLock.wait();
+                        } else {
+                            mLock.wait(mKeepAliveMillis);
+                        }
                     } catch (InterruptedException e) {
                         // Ignore
                     }
