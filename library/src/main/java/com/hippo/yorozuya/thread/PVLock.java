@@ -25,7 +25,7 @@ public class PVLock {
     }
 
     /**
-     * Obtain
+     * Obtain.
      */
     public synchronized void p() throws InterruptedException {
         while (true) {
@@ -39,12 +39,38 @@ public class PVLock {
     }
 
     /**
-     * Release
+     * Obtain without {@code InterruptedException}.
+     * But it will throw {@code IllegalStateException}.
+     */
+    public synchronized void pp() {
+        while (true) {
+            if (mCounter > 0) {
+                mCounter--;
+                break;
+            } else {
+                try {
+                    this.wait();
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException("Can't interrupt in PVLock.pp()");
+                }
+            }
+        }
+    }
+
+    /**
+     * Release.
      */
     public synchronized void v() {
         mCounter++;
         if (mCounter > 0) {
             this.notify();
         }
+    }
+
+    /**
+     * Just the same as {@link #v}.
+     */
+    public synchronized void vv() {
+        v();
     }
 }
