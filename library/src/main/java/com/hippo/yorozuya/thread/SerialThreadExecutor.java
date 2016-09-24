@@ -26,9 +26,9 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class SerialThreadExecutor implements Executor, Runnable {
 
-    private long mKeepAliveMillis;
-    private Queue<Runnable> mWorkQueue;
-    private ThreadFactory mThreadFactory;
+    private final long mKeepAliveMillis;
+    private final Queue<Runnable> mWorkQueue;
+    private final ThreadFactory mThreadFactory;
 
     // The worker
     private Thread mThread;
@@ -69,7 +69,7 @@ public class SerialThreadExecutor implements Executor, Runnable {
 
         for (;;) {
             mThreadLock.lock();
-            Runnable runnable = mWorkQueue.poll();
+            final Runnable runnable = mWorkQueue.poll();
             if (runnable == null) {
                 if (hasWaited) {
                     // Have waited enough time
